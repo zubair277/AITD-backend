@@ -10,6 +10,13 @@ function getPool() {
   return pool;
 }
 
+async function ensureColumn(tableName, columnName, definition) {
+  const [rows] = await pool.query(`SHOW COLUMNS FROM \`${tableName}\` LIKE ?`, [columnName]);
+  if (!rows.length) {
+    await pool.query(`ALTER TABLE \`${tableName}\` ADD COLUMN ${definition}`);
+  }
+}
+
 async function initDb() {
   const bootstrap = await mysql.createConnection({
     host: config.db.host,
@@ -39,6 +46,8 @@ async function initDb() {
       id VARCHAR(64) NOT NULL PRIMARY KEY,
       title VARCHAR(255) NOT NULL,
       description TEXT,
+      detail_description LONGTEXT,
+      gallery_images LONGTEXT,
       event_date VARCHAR(50),
       location VARCHAR(255),
       image_url TEXT,
@@ -48,6 +57,9 @@ async function initDb() {
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   `);
+
+  await ensureColumn("events", "detail_description", "`detail_description` LONGTEXT");
+  await ensureColumn("events", "gallery_images", "`gallery_images` LONGTEXT");
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS placements (
@@ -71,11 +83,16 @@ async function initDb() {
       title VARCHAR(255) NOT NULL,
       summary TEXT,
       link TEXT,
+      image_url TEXT,
+      image_public_id VARCHAR(255),
       sort_order INT NOT NULL DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   `);
+
+  await ensureColumn("latest_news", "image_url", "`image_url` TEXT");
+  await ensureColumn("latest_news", "image_public_id", "`image_public_id` VARCHAR(255)");
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS testimonials (

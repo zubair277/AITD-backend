@@ -22,7 +22,7 @@ async function getSectionItems(section) {
 
   if (section === "events") {
     const [rows] = await pool.query(
-      `SELECT id, title, description, event_date AS eventDate, location, image_url AS imageUrl, image_public_id AS imagePublicId, sort_order AS sortOrder
+      `SELECT id, title, description, detail_description AS detailDescription, gallery_images AS galleryImages, event_date AS eventDate, location, image_url AS imageUrl, image_public_id AS imagePublicId, sort_order AS sortOrder
        FROM events ORDER BY sort_order ASC, updated_at DESC`
     );
     return rows.map((row) => ({
@@ -31,7 +31,19 @@ async function getSectionItems(section) {
       title: row.title || "",
       subtitle: "",
       description: row.description || "",
-      meta: { date: row.eventDate || "", location: row.location || "" },
+      meta: {
+        date: row.eventDate || "",
+        location: row.location || "",
+        detailDescription: row.detailDescription || "",
+        galleryImages: (() => {
+          try {
+            const parsed = JSON.parse(row.galleryImages || "[]");
+            return Array.isArray(parsed) ? parsed : [];
+          } catch {
+            return [];
+          }
+        })(),
+      },
       imageUrl: row.imageUrl || null,
       imagePublicId: row.imagePublicId || null,
       sortOrder: row.sortOrder || 0,
@@ -62,7 +74,7 @@ async function getSectionItems(section) {
 
   if (section === "latest-news") {
     const [rows] = await pool.query(
-      `SELECT id, title, summary, link, sort_order AS sortOrder
+      `SELECT id, title, summary, link, image_url AS imageUrl, image_public_id AS imagePublicId, sort_order AS sortOrder
        FROM latest_news ORDER BY sort_order ASC, updated_at DESC`
     );
     return rows.map((row) => ({
@@ -72,8 +84,8 @@ async function getSectionItems(section) {
       subtitle: "",
       description: row.summary || "",
       meta: { link: row.link || "" },
-      imageUrl: null,
-      imagePublicId: null,
+      imageUrl: row.imageUrl || null,
+      imagePublicId: row.imagePublicId || null,
       sortOrder: row.sortOrder || 0,
     }));
   }
@@ -127,12 +139,14 @@ async function replaceSectionItems(section, items) {
       for (let index = 0; index < items.length; index += 1) {
         const item = items[index];
         await connection.query(
-          `INSERT INTO events (id, title, description, event_date, location, image_url, image_public_id, sort_order)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO events (id, title, description, detail_description, gallery_images, event_date, location, image_url, image_public_id, sort_order)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             item.id,
             item.title || "",
             item.description || "",
+            item.meta?.detailDescription || "",
+            JSON.stringify(Array.isArray(item.meta?.galleryImages) ? item.meta.galleryImages : []),
             item.meta?.date || "",
             item.meta?.location || "",
             item.imageUrl || null,
@@ -166,13 +180,15 @@ async function replaceSectionItems(section, items) {
       for (let index = 0; index < items.length; index += 1) {
         const item = items[index];
         await connection.query(
-          `INSERT INTO latest_news (id, title, summary, link, sort_order)
-           VALUES (?, ?, ?, ?, ?)`,
+          `INSERT INTO latest_news (id, title, summary, link, image_url, image_public_id, sort_order)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
           [
             item.id,
             item.title || "",
             item.description || "",
             item.meta?.link || "",
+            item.imageUrl || null,
+            item.imagePublicId || null,
             Number.isFinite(item.sortOrder) ? item.sortOrder : index,
           ]
         );
