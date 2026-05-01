@@ -50,6 +50,7 @@ async function initDb() {
       gallery_images LONGTEXT,
       event_date VARCHAR(50),
       location VARCHAR(255),
+      status VARCHAR(20) NOT NULL DEFAULT 'upcoming',
       image_url TEXT,
       image_public_id VARCHAR(255),
       sort_order INT NOT NULL DEFAULT 0,
@@ -60,6 +61,11 @@ async function initDb() {
 
   await ensureColumn("events", "detail_description", "`detail_description` LONGTEXT");
   await ensureColumn("events", "gallery_images", "`gallery_images` LONGTEXT");
+  await ensureColumn(
+    "events",
+    "status",
+    "`status` VARCHAR(20) NOT NULL DEFAULT 'upcoming'"
+  );
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS placements (

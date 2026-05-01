@@ -22,7 +22,7 @@ async function getSectionItems(section) {
 
   if (section === "events") {
     const [rows] = await pool.query(
-      `SELECT id, title, description, detail_description AS detailDescription, gallery_images AS galleryImages, event_date AS eventDate, location, image_url AS imageUrl, image_public_id AS imagePublicId, sort_order AS sortOrder
+      `SELECT id, title, description, detail_description AS detailDescription, gallery_images AS galleryImages, event_date AS eventDate, location, status, image_url AS imageUrl, image_public_id AS imagePublicId, sort_order AS sortOrder
        FROM events ORDER BY sort_order ASC, updated_at DESC`
     );
     return rows.map((row) => ({
@@ -34,6 +34,7 @@ async function getSectionItems(section) {
       meta: {
         date: row.eventDate || "",
         location: row.location || "",
+        status: row.status === "completed" ? "completed" : "upcoming",
         detailDescription: row.detailDescription || "",
         galleryImages: (() => {
           try {
@@ -135,12 +136,22 @@ async function replaceSectionItems(section, items) {
   try {
     await connection.beginTransaction();
     if (section === "events") {
-      await connection.query(`DELETE FROM events`);
       for (let index = 0; index < items.length; index += 1) {
         const item = items[index];
         await connection.query(
-          `INSERT INTO events (id, title, description, detail_description, gallery_images, event_date, location, image_url, image_public_id, sort_order)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO events (id, title, description, detail_description, gallery_images, event_date, location, status, image_url, image_public_id, sort_order)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE
+             title = VALUES(title),
+             description = VALUES(description),
+             detail_description = VALUES(detail_description),
+             gallery_images = VALUES(gallery_images),
+             event_date = VALUES(event_date),
+             location = VALUES(location),
+             status = VALUES(status),
+             image_url = VALUES(image_url),
+             image_public_id = VALUES(image_public_id),
+             sort_order = VALUES(sort_order)`,
           [
             item.id,
             item.title || "",
@@ -149,11 +160,20 @@ async function replaceSectionItems(section, items) {
             JSON.stringify(Array.isArray(item.meta?.galleryImages) ? item.meta.galleryImages : []),
             item.meta?.date || "",
             item.meta?.location || "",
+            item.meta?.status === "completed" ? "completed" : "upcoming",
             item.imageUrl || null,
             item.imagePublicId || null,
             Number.isFinite(item.sortOrder) ? item.sortOrder : index,
           ]
         );
+      }
+      if (items.length > 0) {
+        await connection.query(
+          `DELETE FROM events WHERE id NOT IN (${items.map(() => "?").join(", ")})`,
+          items.map((item) => item.id)
+        );
+      } else {
+        await connection.query(`DELETE FROM events`);
       }
     } else if (section === "placements") {
       await connection.query(`DELETE FROM placements`);
