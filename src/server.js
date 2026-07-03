@@ -1,4 +1,5 @@
 const express = require("express");
+const crypto = require("crypto");
 const cors = require("cors");
 const multer = require("multer");
 const cookieParser = require("cookie-parser");
@@ -9,6 +10,10 @@ const {
   ALLOWED_SECTIONS,
   getSectionItems,
   replaceSectionItems,
+  getSectionItemById,
+  createSectionItem,
+  updateSectionItem,
+  deleteSectionItem,
 } = require("./content.service");
 const {
   authMiddleware,
@@ -62,20 +67,65 @@ app.get("/api/content/:section", async (req, res, next) => {
 
 app.post("/api/content/:section", authMiddleware, async (req, res, next) => {
   try {
-    const incoming = Array.isArray(req.body?.items) ? req.body.items : [];
-    const items = incoming.map((item, index) => ({
-      id: String(item.id || crypto.randomUUID()),
-      title: String(item.title || ""),
-      subtitle: String(item.subtitle || ""),
-      description: String(item.description || ""),
-      meta: item.meta && typeof item.meta === "object" ? item.meta : {},
-      imageUrl: item.imageUrl ? String(item.imageUrl) : null,
-      imagePublicId: item.imagePublicId ? String(item.imagePublicId) : null,
-      sortOrder: Number.isFinite(item.sortOrder) ? Number(item.sortOrder) : index,
-    }));
+    // If incoming payload is the old bulk structure, fall back for compatibility
+    if (req.body && Array.isArray(req.body.items)) {
+      const incoming = req.body.items;
+      const items = incoming.map((item, index) => ({
+        id: String(item.id || crypto.randomUUID()),
+        title: String(item.title || ""),
+        subtitle: String(item.subtitle || ""),
+        description: String(item.description || ""),
+        meta: item.meta && typeof item.meta === "object" ? item.meta : {},
+        imageUrl: item.imageUrl ? String(item.imageUrl) : null,
+        imagePublicId: item.imagePublicId ? String(item.imagePublicId) : null,
+        sortOrder: Number.isFinite(item.sortOrder) ? Number(item.sortOrder) : index,
+      }));
+      const saved = await replaceSectionItems(req.params.section, items);
+      return res.json({ items: saved });
+    }
 
-    const saved = await replaceSectionItems(req.params.section, items);
-    res.json({ items: saved });
+    // Otherwise, treat as individual item creation (RESTful)
+    const item = {
+      id: req.body.id ? String(req.body.id) : crypto.randomUUID(),
+      title: req.body.title ? String(req.body.title) : "",
+      subtitle: req.body.subtitle ? String(req.body.subtitle) : "",
+      description: req.body.description ? String(req.body.description) : "",
+      meta: req.body.meta && typeof req.body.meta === "object" ? req.body.meta : {},
+      imageUrl: req.body.imageUrl ? String(req.body.imageUrl) : null,
+      imagePublicId: req.body.imagePublicId ? String(req.body.imagePublicId) : null,
+      sortOrder: Number.isFinite(req.body.sortOrder) ? Number(req.body.sortOrder) : 0,
+    };
+
+    const created = await createSectionItem(req.params.section, item);
+    res.status(201).json(created);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put("/api/content/:section/:id", authMiddleware, async (req, res, next) => {
+  try {
+    const item = {
+      title: req.body.title !== undefined ? String(req.body.title) : undefined,
+      subtitle: req.body.subtitle !== undefined ? String(req.body.subtitle) : undefined,
+      description: req.body.description !== undefined ? String(req.body.description) : undefined,
+      meta: req.body.meta && typeof req.body.meta === "object" ? req.body.meta : undefined,
+      imageUrl: req.body.imageUrl !== undefined ? (req.body.imageUrl ? String(req.body.imageUrl) : null) : undefined,
+      imagePublicId: req.body.imagePublicId !== undefined ? (req.body.imagePublicId ? String(req.body.imagePublicId) : null) : undefined,
+      sortOrder: Number.isFinite(req.body.sortOrder) ? Number(req.body.sortOrder) : undefined,
+    };
+
+    const updated = await updateSectionItem(req.params.section, req.params.id, item);
+    res.json(updated);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete("/api/content/:section/:id", authMiddleware, async (req, res, next) => {
+  try {
+    const result = await deleteSectionItem(req.params.section, req.params.id);
+    res.json(result);
   } catch (error) {
     next(error);
   }
