@@ -179,6 +179,42 @@ app.get("/api/placements", async (_req, res, next) => {
   }
 });
 
+// Inquiries Endpoints
+app.post("/api/contact", async (req, res, next) => {
+  try {
+    const { fullName, email, phone, message } = req.body;
+    if (!fullName || !email || !phone) {
+      return res.status(400).json({ error: "Full name, email, and phone are required." });
+    }
+    
+    const { getPool } = require("./db");
+    const pool = getPool();
+    const id = crypto.randomUUID();
+    
+    await pool.query(
+      `INSERT INTO inquiries (id, full_name, email, phone, message) VALUES (?, ?, ?, ?, ?)`,
+      [id, fullName, email, phone, message || ""]
+    );
+    
+    res.status(201).json({ success: true, message: "Inquiry received." });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/inquiries", authMiddleware, async (_req, res, next) => {
+  try {
+    const { getPool } = require("./db");
+    const pool = getPool();
+    const [rows] = await pool.query(
+      `SELECT id, full_name, email, phone, message, created_at FROM inquiries ORDER BY created_at DESC`
+    );
+    res.json({ inquiries: rows });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.use((error, _req, res, _next) => {
   const status = error.status || 500;
   res.status(status).json({
