@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const multer = require("multer");
+const cookieParser = require("cookie-parser");
 const config = require("./config");
 const { initDb } = require("./db");
 const { cloudinary, isCloudinaryEnabled } = require("./cloudinary");
@@ -9,6 +10,13 @@ const {
   getSectionItems,
   replaceSectionItems,
 } = require("./content.service");
+const {
+  authMiddleware,
+  login,
+  logout,
+  checkSession,
+  changePassword,
+} = require("./auth.controller");
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -17,9 +25,11 @@ app.use(
   cors({
     origin: config.clientOrigin === "*" ? "*" : config.clientOrigin.split(",").map((o) => o.trim()),
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-CSRF-Token"],
+    credentials: true,
   })
 );
+app.use(cookieParser(config.sessionSecret));
 app.use(express.json({ limit: "10mb" }));
 
 app.get("/api/health", (_req, res) => {
@@ -30,6 +40,12 @@ app.get("/api/health", (_req, res) => {
     cloudinaryEnabled: isCloudinaryEnabled(),
   });
 });
+
+// Auth endpoints
+app.post("/api/auth/login", login);
+app.post("/api/auth/logout", logout);
+app.get("/api/auth/me", authMiddleware, checkSession);
+app.post("/api/auth/change-password", authMiddleware, changePassword);
 
 app.get("/api/sections", (_req, res) => {
   res.json({ sections: Array.from(ALLOWED_SECTIONS) });
@@ -44,7 +60,7 @@ app.get("/api/content/:section", async (req, res, next) => {
   }
 });
 
-app.post("/api/content/:section", async (req, res, next) => {
+app.post("/api/content/:section", authMiddleware, async (req, res, next) => {
   try {
     const incoming = Array.isArray(req.body?.items) ? req.body.items : [];
     const items = incoming.map((item, index) => ({
@@ -65,7 +81,7 @@ app.post("/api/content/:section", async (req, res, next) => {
   }
 });
 
-app.post("/api/uploads/image", upload.single("image"), async (req, res, next) => {
+app.post("/api/uploads/image", authMiddleware, upload.single("image"), async (req, res, next) => {
   try {
     if (!isCloudinaryEnabled()) {
       return res.status(400).json({
